@@ -1,4 +1,4 @@
-
+from huggingface_hub import hf_hub_download
 import streamlit as st
 import numpy as np
 import pandas as pd
@@ -35,7 +35,11 @@ CATEGORIES = [
 # -----------------------------------
 @st.cache_resource
 def load_model():
-    return tf.keras.models.load_model(MODEL_PATH)
+    model_path = hf_hub_download(
+        repo_id="jeetendra-bhosale-2026/industrial_steel_surface_detection",
+        filename="resnet50_industrial_defect.keras"
+    )
+    return tf.keras.models.load_model(model_path, compile=False)
 
 # -----------------------------------
 # Predict defect
