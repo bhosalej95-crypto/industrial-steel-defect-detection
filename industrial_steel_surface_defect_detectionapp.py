@@ -2,25 +2,18 @@ from huggingface_hub import hf_hub_download
 import streamlit as st
 import numpy as np
 import pandas as pd
-from pathlib import Path
 from PIL import Image
 import tensorflow as tf
 from tensorflow.keras.applications.resnet50 import preprocess_input
 
-# -----------------------------------
 # Application configuration
-# -----------------------------------
 st.set_page_config(
     page_title="Steel Defect Detection",
     page_icon="🏭",
     layout="wide"
 )
 
-MODEL_PATH = (
-    Path(__file__).parent /
-    "resnet50_industrial_defect.keras"
-)
-
+# Must match the class order used during training.
 CATEGORIES = [
     "crazing",
     "inclusion",
@@ -30,46 +23,55 @@ CATEGORIES = [
     "scratches"
 ]
 
-# -----------------------------------
-# Load the trained model
-# -----------------------------------
+
+# Download and load the trained model
 @st.cache_resource
 def load_model():
     model_path = hf_hub_download(
-        repo_id="jeetendra-bhosale-2026/industrial_steel_surface_detection",
+        repo_id=(
+            "jeetendra-bhosale-2026/"
+            "industrial_steel_surface_detection"
+        ),
         filename="resnet50_industrial_defect.keras"
     )
-    return tf.keras.models.load_model(model_path, compile=False)
 
-# -----------------------------------
-# Predict defect
-# -----------------------------------
-def predict_defect(image, model):
-    image = image.convert("RGB")
-    image = image.resize((128, 128))
-
-    image_array = np.array(
-        image, dtype=np.float32
+    return tf.keras.models.load_model(
+        model_path,
+        compile=False
     )
 
-    # ResNet50 preprocessing
+
+# Predict defect
+def predict_defect(image, model):
+    height, width = model.input_shape[1:3]
+
+    if height is None or width is None:
+        raise ValueError(
+            "The model has a variable input size. "
+            "Set the image dimensions used during training."
+        )
+
+    image = image.convert("RGB").resize((width, height))
+    image_array = np.asarray(image, dtype=np.float32)
+
+    # Must match preprocessing used during training.
     image_array = preprocess_input(image_array)
     image_array = np.expand_dims(image_array, axis=0)
 
-    predictions = model.predict(
-        image_array, verbose=0
+    predictions = np.asarray(
+        model.predict(image_array, verbose=0)
     )[0]
 
+    if predictions.shape != (len(CATEGORIES),):
+        raise ValueError(
+            "Model output does not match the six defect classes."
+        )
+
     predicted_index = int(np.argmax(predictions))
+    return predicted_index, predictions
 
-    return (
-        CATEGORIES[predicted_index],
-        predictions
-    )
 
-# -----------------------------------
 # Main interface
-# -----------------------------------
 st.title("🏭 Industrial Steel Defect Detection")
 
 st.write(
@@ -88,7 +90,11 @@ uploaded_file = st.file_uploader(
 )
 
 if uploaded_file is not None:
-    image = Image.open(uploaded_file).convert("RGB")
+    try:
+        image = Image.open(uploaded_file).convert("RGB")
+    except Exception as error:
+        st.error(f"Could not open the image: {error}")
+        st.stop()
 
     left, right = st.columns(2)
 
@@ -101,58 +107,56 @@ if uploaded_file is not None:
 
         if st.button("🔍 Detect Steel Defect", type="primary"):
             try:
-                if not MODEL_PATH.exists():
-                    st.error(
-                        f"Model file not found: {MODEL_PATH}"
-                    )
-                else:
+                with st.spinner("Loading model and predicting..."):
                     model = load_model()
 
-                    defect, probabilities = predict_defect(
+                    predicted_index, probabilities = predict_defect(
                         image, model
                     )
 
-                    confidence = float(
-                        probabilities[CATEGORIES.index(defect)]
-                    ) * 100
+                defect = CATEGORIES[predicted_index]
+                confidence = float(
+                    probabilities[predicted_index]
+                ) * 100
 
-                    st.success(
-                        f"Predicted Defect: "
-                        f"{defect.replace('_', ' ').title()}"
-                    )
+                st.success(
+                    "Predicted Defect: "
+                    f"{defect.replace('_', ' ').title()}"
+                )
 
-                    st.metric(
-                        "Prediction Score",
-                        f"{confidence:.2f}%"
-                    )
+                st.metric(
+                    "Prediction Score",
+                    f"{confidence:.2f}%"
+                )
 
-                    st.caption(
-                        "Scores are model outputs, not "
-                        "guaranteed probabilities of correctness."
-                    )
+                st.caption(
+                    "Scores are model outputs, not guaranteed "
+                    "probabilities of correctness."
+                )
 
-                    scores_df = pd.DataFrame({
-                        "Defect Class": [
-                            name.replace("_", " ").title()
-                            for name in CATEGORIES
-                        ],
-                        "Score (%)": probabilities * 100
-                    }).sort_values(
-                        "Score (%)", ascending=False
-                    )
+                scores_df = pd.DataFrame({
+                    "Defect Class": [
+                        name.replace("_", " ").title()
+                        for name in CATEGORIES
+                    ],
+                    "Score (%)": probabilities * 100
+                }).sort_values(
+                    "Score (%)",
+                    ascending=False
+                )
 
-                    st.subheader("All Class Scores")
-                    st.bar_chart(
-                        scores_df.set_index("Defect Class")
-                    )
+                st.subheader("All Class Scores")
+                st.bar_chart(
+                    scores_df.set_index("Defect Class")
+                )
 
-                    st.dataframe(
-                        scores_df.style.format({
-                            "Score (%)": "{:.2f}%"
-                        }),
-                        use_container_width=True,
-                        hide_index=True
-                    )
+                st.dataframe(
+                    scores_df.style.format({
+                        "Score (%)": "{:.2f}%"
+                    }),
+                    use_container_width=True,
+                    hide_index=True
+                )
 
             except Exception as error:
                 st.error(f"Prediction failed: {error}")
