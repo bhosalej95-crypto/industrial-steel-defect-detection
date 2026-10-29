@@ -23,6 +23,33 @@ CATEGORIES = [
     "scratches"
 ]
 
+# Definitions displayed below the predicted defect
+DEFECT_DEFINITIONS = {
+    "crazing": (
+        "A network of small, fine cracks on the steel surface."
+    ),
+    "inclusion": (
+        "Non-metallic particles trapped in the steel, "
+        "often appearing as dark spots or lines."
+    ),
+    "patches": (
+        "Irregular areas that look different in colour "
+        "or texture from the surrounding steel surface."
+    ),
+    "pitted_surface": (
+        "Small holes or depressions that make "
+        "the steel surface look rough."
+    ),
+    "rolled-in_scale": (
+        "Oxide scale pressed into the steel surface during "
+        "rolling, leaving irregular dark marks."
+    ),
+    "scratches": (
+        "Lines or grooves caused by objects rubbing "
+        "or scraping against the steel surface."
+    )
+}
+
 
 # Download and load the trained model
 @st.cache_resource
@@ -122,6 +149,11 @@ if uploaded_file is not None:
                 st.success(
                     "Predicted Defect: "
                     f"{defect.replace('_', ' ').title()}"
+                )
+
+                # Show the definition of the predicted class
+                st.info(
+                    f"**Definition:** {DEFECT_DEFINITIONS[defect]}"
                 )
 
                 st.metric(
